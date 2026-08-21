@@ -82,6 +82,12 @@ check("A3 _is_active 按状态判定 + 撤单请求构造",
       and order(status=Status.ALLTRADED)._is_active() is False
       and o_enum.create_cancel_request().order_id == 123
       and o_enum.local_symbol == "ag2612.SHFE")  # 枚举路径同样产出纯代码
+
+# A7: 字符串 exchange 的 OrderData 也能安全撤单(排掉 CancelRequest 枚举专属的雷)
+o_str = order(order_id=456)
+creq = o_str.create_cancel_request()
+check("A7 字符串 exchange 的撤单请求构造(原本此处 AttributeError)",
+      creq.order_id == 456 and creq.local_symbol == "ag2612.SHFE")
 try:
     o.last_price = 1.0  # 公开函数名 → frozen 拒绝
     ok = False

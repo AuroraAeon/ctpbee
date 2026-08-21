@@ -120,9 +120,9 @@ real Redis): `python tests/<name>.py` exits non-zero on failure.
 
 Behavioral quirks locked by characterization (see suite comments):
 `PositionData.local_position_id` uses `str(enum)` (`ag2612.SHFE.Direction.LONG`);
-`OrderData` accepts both string and enum exchanges while
-`CancelRequest.__post_init__` requires the enum (calling
-`create_cancel_request()` on a string-exchange OrderData raises);
+`OrderData`/`CancelRequest` both accept string and enum exchanges (the
+CancelRequest enum-only trap was fixed via `_exchange_code`, changelog
+2026-08-21i);
 `main_contract_mapping` keys strip digits from the whole local_symbol
 (`ag2612.SHFE` → `AG.SHFE`). Formerly `DDDR.encode→parse` was not
 self-consistent — fixed (see changelog 2026-08-21g).
@@ -139,3 +139,4 @@ self-consistent — fixed (see changelog 2026-08-21g).
 | 2026-08-21f | Comprehensive upper-layer simulation suite `tests/test_upper_layers.py` (61 checks, no CTP / no real Redis — FakeApp + isolated global signals). Covers the full Recorder event flow, local-position deep cases (close priority by exchange, frozen spill, SHFE order splitting, yesterday conversion), DDDR/UDDR serialization round-trips, Hickey session windows, trade-day derivation, CtpbeeApi dispatch (`__call__`, `route`, `register`, `subscribe`) and Config loaders. Established the standing rule: **every change lands with passing tests** (109 checks across 6 suites total). Characterization-locked upstream quirks are listed in the test-infrastructure section above. |
 | 2026-08-21g | Fixed `DDDR.encode→parse` self-inconsistency (the long-standing `fixme`): `loads` restores `dumps`-produced payloads directly as entity objects, so `__parse__` now adopts the object as-is and only falls back to the key-sniffing reconstruction when the inner data is a plain dict (legacy hand-built payloads keep working). Round-trip checks for TickData/OrderData/TradeData/ContractData added to `test_upper_layers.py` (now 65 checks; 113 total across 6 suites). |
 | 2026-08-21h | Replaced the five duplicated try/except exchange fallbacks in `constant.py` `__post_init__` methods with a single module helper `_exchange_code()` using the `getattr(exchange, "value", exchange)` idiom — enum takes `.value`, a plain string falls back to itself. Identical semantics (both paths already characterization-tested: string via A2, enum via A3), no exception machinery, one line per site. `CancelRequest` remains enum-only (documented quirk); switching it to `_exchange_code` as well would also fix the `create_cancel_request()` trap if desired. |
+| 2026-08-21i | `CancelRequest.__post_init__` now uses `_exchange_code` — accepts string **and** enum exchanges, defusing the trap where `OrderData.create_cancel_request()` crashes on a string-exchange OrderData (`AttributeError: 'str' object has no attribute 'value'`). Test `test_upper_layers.py` A7 locks the string path (66 checks; 114 total across 6 suites). |

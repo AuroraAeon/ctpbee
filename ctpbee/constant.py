@@ -648,7 +648,9 @@ class CancelRequest(BaseRequest):
 
     def __post_init__(self):
         """"""
-        self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        # _exchange_code: 枚举/字符串都接受——字符串 exchange 的 OrderData
+        # 经 create_cancel_request() 透传时原本在这里 AttributeError
+        self.local_symbol = f"{self.symbol}.{_exchange_code(self.exchange)}"
 
 
 class SharedData(Entity):
