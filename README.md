@@ -12,6 +12,8 @@ bee bee .... for developer's trading ~
 
 `ctpbee` provide a micro core of trading, you can make trade and backtest in it.
 
+📖 **完整用户文档**: [docs/index.html](docs/index.html) —— 快速开始 · 配置 · 架构 · 策略 API · 下单接口 · Tool 注册 · 回测 · 注意事项
+
 ## 环境设置
 
 ```bash
