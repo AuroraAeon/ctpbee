@@ -12,9 +12,6 @@ bee bee .... for developer's trading ~
 
 `ctpbee` provide a micro core of trading, you can make trade and backtest in it.
 
-📖 **在线文档**: https://ctpbee.github.io/ctpbee/ （GitHub Pages 自动部署，master 分支 docs/ 变更后自动更新）
-   本地浏览完整版: [docs/index.html](docs/index.html) —— 快速开始 · 配置 · 数据结构 · 策略 API · 下单接口 · Tool 用法 · 回测 · 注意事项
-
 ## 环境设置
 
 ```bash
@@ -54,12 +51,12 @@ pip3 install ctpbee
 - [x] Windows
 - [x] MacOS
 
-## 文档与交流
+## 文档
 
-[文档地址](http://docs.ctpbee.com)
+📖 **在线文档地址**: https://ctpbee.github.io/ctpbee/ （GitHub Pages 自动部署，master 分支 docs/ 变更后自动更新）
 
-[论坛地址](http://forum.ctpbee.com)
-
+  - 本地浏览完整版: [docs/index.html](docs/index.html) —— 快速开始 · 配置 · 数据结构 · 策略 API · 下单接口 · Tool 用法 · 回测 · 注意事项
+   
 ## 快速开始
 
 ```python
