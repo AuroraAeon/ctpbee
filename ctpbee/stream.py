@@ -76,13 +76,19 @@ class DDDR:
             self.__parse__(obj)
 
     def __parse__(self, obj):
-        """
-        fixme: why not loads do not work
+        """解析下行消息。
+
+        loads 对 DDDR.encode 的产物会直接还原实体对象(TickData/OrderData/
+        TradeData/ContractData...)——此时无需嗅探重建, 直接采用; 只有当
+        data 是普通 dict(旧客户端手工构造的载荷)时才走键嗅探分支。
         """
         from ctpbee import loads
         locken = loads(obj)
         self.index = locken["index"]
         msg = loads(locken["data"])
+        if not isinstance(msg, dict):
+            self.order = msg
+            return
         if "order_id" in msg.keys() and "tradeid" in msg.keys():
             self.order = TradeData(**msg)
         elif "order_id" in msg.keys() and "tradeid" not in msg.keys():

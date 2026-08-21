@@ -437,6 +437,14 @@ check("E6 DDDR 未知形状 → None", dddr_parse({"foo": 1}).order is None)
 check("E7 jsond dumps/loads 直接往返", loads(dumps(tick())).symbol == "ag2612")
 check("E8 UDDR 坏消息不抛", UDDR("{bad", parse=True).obj is None)
 
+# E9: encode→parse 自洽(loads 还原实体对象时直接采用, 不再要求 dict)
+for obj, key, want in [(tick(), "last_price", 15345.0), (order(), "order_id", 1),
+                       (trade(), "tradeid", "T1"), (contract(), "size", 15.0)]:
+    back = DDDR(DDDR(obj=obj, index=11).encode(), parse=True)
+    check(f"E9 {type(obj).__name__} DDDR encode→parse 往返",
+          type(back.order).__name__ == type(obj).__name__
+          and getattr(back.order, key) == want and back.index == 11)
+
 # ================================================================== #
 # F. func: Hickey 时段 / 交易日 / 请求构造
 # ================================================================== #
