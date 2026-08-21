@@ -80,7 +80,8 @@ o_enum = OrderData(symbol="ag2612", exchange=Exchange.SHFE, order_id=123,
 check("A3 _is_active 按状态判定 + 撤单请求构造",
       order(status=active_status)._is_active() is True
       and order(status=Status.ALLTRADED)._is_active() is False
-      and o_enum.create_cancel_request().order_id == 123)
+      and o_enum.create_cancel_request().order_id == 123
+      and o_enum.local_symbol == "ag2612.SHFE")  # 枚举路径同样产出纯代码
 try:
     o.last_price = 1.0  # 公开函数名 → frozen 拒绝
     ok = False

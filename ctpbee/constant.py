@@ -27,6 +27,16 @@ def frozen(cls):
     return cls
 
 
+def _exchange_code(exchange) -> str:
+    """Exchange 枚举与字符串统一为交易所代码字符串(如 "SHFE")。
+
+    getattr 默认值惯用法替代原先的 try/except 兜底: 枚举取 .value,
+    字符串没有 .value 回落到自身。语义与各 Entity __post_init__ 里的
+    旧 try/except 完全一致, 无异常机制、单行。
+    """
+    return getattr(exchange, "value", exchange)
+
+
 class Missing:
     value = "属性缺失"
 
@@ -386,10 +396,7 @@ class BarData(Entity):
             setattr(self, "symbol", l.split(".")[0])
             setattr(self, "exchange", l.split(".")[1])
         else:
-            try:
-                self.local_symbol = f"{self.symbol}.{self.exchange.value}"
-            except AttributeError:
-                self.local_symbol = f"{self.symbol}.{self.exchange}"
+            self.local_symbol = f"{self.symbol}.{_exchange_code(self.exchange)}"
 
 
 class OrderData(Entity):
@@ -414,10 +421,7 @@ class OrderData(Entity):
 
     def __post_init__(self):
         """"""
-        try:
-            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
-        except AttributeError as e:
-            self.local_symbol = f"{self.symbol}.{self.exchange}"
+        self.local_symbol = f"{self.symbol}.{_exchange_code(self.exchange)}"
         self.local_order_id = f"{self.gateway_name}.{self.order_id}"
 
     def _is_active(self):
@@ -461,10 +465,7 @@ class TradeData(Entity):
 
     def __post_init__(self):
         """"""
-        try:
-            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
-        except AttributeError:
-            self.local_symbol = f"{self.symbol}.{self.exchange}"
+        self.local_symbol = f"{self.symbol}.{_exchange_code(self.exchange)}"
         self.local_order_id = f"{self.gateway_name}.{self.order_id}"
         self.local_trade_id = f"{self.gateway_name}.{self.tradeid}"
 
@@ -488,10 +489,7 @@ class PositionData(Entity):
 
     def __post_init__(self):
         """"""
-        try:
-            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
-        except AttributeError:
-            self.local_symbol = f"{self.symbol}.{self.exchange}"
+        self.local_symbol = f"{self.symbol}.{_exchange_code(self.exchange)}"
         self.local_position_id = f"{self.local_symbol}.{self.direction}"
 
 
@@ -618,10 +616,7 @@ class OrderRequest(BaseRequest):
 
     def __post_init__(self):
         """"""
-        try:
-            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
-        except AttributeError:
-            self.local_symbol = f"{self.symbol}.{self.exchange}"
+        self.local_symbol = f"{self.symbol}.{_exchange_code(self.exchange)}"
 
     def _create_order_data(self, order_id: str, gateway_name: str, time=None):
         """
