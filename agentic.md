@@ -28,6 +28,9 @@ C++ CTP callbacks (interface/<broker>/md_api.py, td_api.py)
        app.app_signal.<event>_signal         (per-app: order/trade/...)
   └─ Recorder (record.py, the data center)
        process_tick_event (@call decorator, helpers.py)
+       ├─ LocalPositionManager.update_tick (data_handle/local_position.py,
+       │    one dict lookup; PositionHolding recomputes pnl only when the
+       │    price / position signature changed — see changelog 2026-08-21b)
        ├─ app.tools[*].on_tick(tick)
        └─ app._extensions → CtpbeeApi subclasses (e.g. hive_recorder)
 ```
@@ -106,3 +109,4 @@ name, TickData 40-field construction + `__post_init__` `local_symbol` +
 | Date | Change |
 |---|---|
 | 2026-08-21 | Hot-path optimization: `build_tick_datetime` (+ActionDay cache) shared by ctp/ctp_rohon/ctp_mini; `@frozen` guard via `sys._getframe`; `Entity.__init__` bulk init. Equivalence suite `tests/test_hotpath_optimization.py` (10 checks) + benchmarks. No public API change; only behavior delta: empty ActionDay now falls back to today instead of raising. |
+| 2026-08-21b | Position hot path (`data_handle/local_position.py`): `update_tick`/`update_bar` skip pnl recompute when inputs are unchanged — pnl is a pure function of `(last_price, pre_settlement, positions, avg prices, size)`; the signature is compared against **current** attributes so external mutations (trade/position callbacks, yesterday-holding conversion) always trigger a recompute on the next tick (no stale pnl). `LocalPositionManager.update_tick/update_bar` use a single dict lookup. Benchmarks (both-side positions): recompute 0.31 µs → skip 0.10 µs (3×; ~60-80% of real ticks carry an unchanged price). Equivalence suite `tests/test_position_hotpath.py` (4 checks: 3000-step random trade/tick oracle, staleness guard, skip observability, changing-price correctness). |
