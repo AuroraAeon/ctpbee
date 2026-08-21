@@ -1,8 +1,8 @@
 """
 """
 
-import inspect
 import os
+import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime, date
 from enum import Enum
@@ -11,8 +11,11 @@ from typing import Any
 
 
 def __set_attr__(self, key, value):
-    # todo: is there a faster to get the last caller function name?
-    father = inspect.getframeinfo(inspect.currentframe().f_back)[2]
+    # 热路径说明: 本函数在每个 Entity 属性写入时都会执行, 行情 tick 的
+    # TickData 构造一次就要走 ~40 回。原先用 inspect.getframeinfo 取调用方
+    # 函数名, 单次 ~14µs(内部构造 traceback 并读源码行); sys._getframe(1)
+    # .f_code.co_name 与其完全等价(同为栈上一帧的函数名), 单次 <1µs。
+    father = sys._getframe(1).f_code.co_name
     if father.startswith("_"):
         self.__dict__[key] = value
     else:
@@ -177,8 +180,11 @@ class Entity:
         return args
 
     def __init__(self, **mapping):
-        for key, value in mapping.items():
-            setattr(self, key, value)
+        # 批量并入实例字典, 与原先逐键 setattr 等价——frozen 的 __set_attr__
+        # 对来自 "__init__"(下划线开头调用方)的写入本就直接写 __dict__,
+        # 这里只是把 ~40 次单写合并成一次字典更新。保护语义不受影响:
+        # 构造之后再从公开函数 setattr 仍会被 __set_attr__ 拒绝。
+        self.__dict__.update(mapping)
         if hasattr(self, "__post_init__"):
             self.__post_init__()
 
