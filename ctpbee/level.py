@@ -736,7 +736,9 @@ class Tool:
     def __init__(self, name: str, app=None):
         self._name = name
         self._app = None
-        self._linked: dict[ToolRegisterType:set] = dict(map(lambda r_type: (r_type, set()), ToolRegisterType))
+        # list 保序(注册序执行)+去重; 触发由 tool_register 装饰器完成
+        # (快照迭代 + 异常隔离, 见 ctpbee/tool_register.py)
+        self._linked: dict = {r_type: [] for r_type in ToolRegisterType}
         if app is not None:
             self.init_app(app)
 
@@ -749,7 +751,19 @@ class Tool:
         return self._name
 
     def add_func(self, func, r_type):
-        self._linked.get(r_type).add(func)
+        """ 注册回调(按注册序, 去重); 非法类型显式报错。 """
+        if r_type not in self._linked:
+            raise ValueError(f"未支持的工具注册类型: {r_type!r}, 支持 {list(self._linked)}")
+        if func not in self._linked[r_type]:
+            self._linked[r_type].append(func)
+
+    def remove_func(self, func, r_type) -> bool:
+        """ 退订回调(与 add_func 对称), 返回是否确实移除。 """
+        hooks = self._linked.get(r_type)
+        if hooks and func in hooks:
+            hooks.remove(func)
+            return True
+        return False
 
     def init_app(self, app):
         if app is not None:
@@ -761,18 +775,26 @@ class Tool:
             raise ValueError(f"can't search Tool: {name}")
         self._app.tools[name].add_func(func=func, r_type=tool_register_type)
 
+    # 基类方法默认挂接 tool_register: 订阅(add_func/subscribe)即生效,
+    # 用户无需自行装饰; 子类重写方法则由子类自行决定是否装饰。
+    # 回调收到的是方法的【返回值】(基类方法返回 None)。
+    @tool_register(ToolRegisterType.TICK)
     def on_tick(self, tick: TickData):
         pass
 
+    @tool_register(ToolRegisterType.TRADE)
     def on_trade(self, trade: TradeData):
         pass
 
+    @tool_register(ToolRegisterType.ORDER)
     def on_order(self, order: OrderData):
         pass
 
+    @tool_register(ToolRegisterType.POSITION)
     def on_position(self, position: PositionData):
         pass
 
+    @tool_register(ToolRegisterType.ACCOUNT)
     def on_account(self, account: AccountData):
         pass
 
