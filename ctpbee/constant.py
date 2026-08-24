@@ -321,6 +321,11 @@ class TickData(Entity):
     symbol: str
     exchange: Any
     name: str = ""
+    # CTP 原始交易日("YYYYMMDD" 字符串, 深度行情的 TradingDay 字段)。
+    # 与 datetime(行情时间, ActionDay 口径)不同: 夜盘 >=20:00 的 tick 其
+    # trading_day 是次一交易日, 节假日跨度也由交易所口径给出。保持原始
+    # 字符串——由使用方(如 ctpbee_kline)按需解析, 避免序列化歧义。
+    trading_day: str = ""
     volume: float = 0
     last_price: float = 0
     last_volume: float = 0

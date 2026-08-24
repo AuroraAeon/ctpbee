@@ -107,6 +107,9 @@ class BeeMdApi(MdApi):
             exchange=exchange,
             datetime=datetimed,
             name=symbol_name_map.get(symbol, "None"),
+            # 交易所口径的交易日(夜盘属次一交易日): K线按交易日聚合的
+            # 工具(如 ctpbee_kline)以此为准, 缺失时才退回本地推断。
+            trading_day=str(data.get("TradingDay", "") or ""),
             volume=data["Volume"],
             last_price=data["LastPrice"],
             limit_up=data["UpperLimitPrice"],
