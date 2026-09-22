@@ -24,6 +24,7 @@ ref_old_last_bar), 并做三层验证:
 直接运行:
     python tests/test_backtest_hotpath.py
 """
+import importlib.util
 import json
 import os
 import sys
@@ -194,8 +195,16 @@ check("D2 周五夜盘归下一交易日(周一)",
       and isinstance(trade_day_of(datetime(2026, 8, 21, 21, 0)), date))
 check("D3 周六凌晨 02:00 归下一交易日(周一)",
       trade_day_of(datetime(2026, 8, 22, 2, 0)) == date(2026, 8, 24))
-check("D4 date.fromisoformat 与 strptime(...).date() 对全部日历项等价",
-      all(date.fromisoformat(x) == datetime.strptime(x, "%Y-%m-%d").date() for x in trade_dates))
+# setup.py 声明支持 Python 3.6(还给 3.6 额外装 dataclasses 兼容包), 而
+# date.fromisoformat 是 3.7 才有的 API —— 它在 3.6 上会让每一根夜盘 bar 抛
+# AttributeError。这里用源码守卫锁定这一点(3.6 的 date 是 C 类型, 无法在运行时
+# 模拟"没有 fromisoformat")。
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_hot_files = ["ctpbee/looper/interface.py", "ctpbee/looper/data.py", "ctpbee/date.py"]
+_with_37_api = [p for p in _hot_files
+                if "fromisoformat(" in open(os.path.join(_ROOT, *p.split("/")), encoding="utf-8").read()]
+check("D4 回测热路径不使用 3.7+ 才有的 date.fromisoformat(setup.py 支持 3.6)",
+      not _with_37_api, ", ".join(_with_37_api))
 
 # --------------------------------------------------------------------------- #
 # E. 交易日记忆化确实生效(优化的存在性证明)
@@ -287,6 +296,9 @@ check("F4 非交易日入参仍抛 ValueError(消息与 list.index 一致)", f4)
 # --------------------------------------------------------------------------- #
 # G. data_api 探测缓存
 # --------------------------------------------------------------------------- #
+_MISSING = object()   # "sys.modules 里原本没有 data_api" 的哨兵
+
+
 def _reset_probe():
     data_mod._DATA_API_TYPES = None
 
@@ -336,6 +348,8 @@ class FakeTick:
 
 fake.Tick = FakeTick
 fake.Kline = type("Kline", (FakeTick,), {})
+# 注入前先记下现场: 装了真 data_api 的环境里, 无条件 del 会把人家的模块抹掉。
+_prev_data_api = sys.modules.get("data_api", _MISSING)
 sys.modules["data_api"] = fake
 try:
     types_ok = data_api_types()
@@ -346,7 +360,10 @@ try:
     # 非 data_api 实体在依赖存在时依旧原样返回
     plain = vess.last_bar
 finally:
-    del sys.modules["data_api"]
+    if _prev_data_api is _MISSING:
+        sys.modules.pop("data_api", None)
+    else:
+        sys.modules["data_api"] = _prev_data_api
     _reset_probe()
 check("G3 data_api 存在: 探测到 (Tick, Kline), 实体走 to_bumblebee() 分支",
       len(types_ok) == 2 and converted == ("converted", "rb2609.SHFE"))
@@ -611,19 +628,24 @@ def _bench():
           f" ({t_old_night / t_new_night:.0f}x)")
 
     # data_api: 每根 bar 的 import 开销 vs 命中缓存
-    _reset_probe()
-    t_old_import = timeit.timeit(
-        "try:\n"
-        "    from data_api import Tick, Kline\n"
-        "except ImportError:\n"
-        "    pass",
-        setup="import sys; sys.modules.pop('data_api', None)",
-        number=300) / 300 * 1e6
-    _reset_probe()
-    data_api_types()                      # 先让缓存热起来
-    t_new_import = timeit.timeit(lambda: data_api_types(), number=200000) / 200000 * 1e6
-    print(f"      data_api 探测 旧 {t_old_import:8.1f}us/根 -> 新 {t_new_import:5.3f}us/根"
-          f" ({t_old_import / t_new_import:,.0f}x), 新实现全生命周期至多探测 1 次")
+    # 只有 data_api 确实不可用时, "每根 bar 一次失败的 import" 才是真实场景;
+    # 装了真 data_api 的机器上跳过这一项, 免得量出来一个不存在的路径。
+    if importlib.util.find_spec("data_api") is not None:
+        print("      data_api 本机可导入: 跳过【失败 import】基准(旧实现在这里不会反复扫 sys.path)")
+    else:
+        _reset_probe()
+        t_old_import = timeit.timeit(
+            "try:\n"
+            "    from data_api import Tick, Kline\n"
+            "except ImportError:\n"
+            "    pass",
+            setup="import sys; sys.modules.pop('data_api', None)",
+            number=300) / 300 * 1e6
+        _reset_probe()
+        data_api_types()                      # 先让缓存热起来
+        t_new_import = timeit.timeit(lambda: data_api_types(), number=200000) / 200000 * 1e6
+        print(f"      data_api 探测 旧 {t_old_import:8.1f}us/根 -> 新 {t_new_import:5.3f}us/根"
+              f" ({t_old_import / t_new_import:,.0f}x), 新实现全生命周期至多探测 1 次")
     print(f"      trade_dates {len(trade_dates)} 项; 交易日记忆表条目数 "
           f"{len(_TRADE_DAY_MEMO)} (≈ 覆盖天数 x 2)")
 

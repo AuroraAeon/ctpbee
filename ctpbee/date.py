@@ -8805,7 +8805,7 @@ trade_dates = [
 #
 # 列表本身保证升序且元素唯一(8800 项, 1990-12-19 ~ 2026-12-31), 因此字典定位与
 # list.index / in 完全等价。回测循环(LocalLooper.__call__)过去在每个 tick 上做
-# 1~2 次线性扫描, 实测日盘 38us、夜盘 49us 每条 —— 在 looper/data.py 的每根 bar
+# 1~2 次线性扫描, 实测日盘 40~46us、夜盘 49~60us 每条 —— 在 looper/data.py 的每根 bar
 # import 探测被缓存之后, 它占了剩下每根 bar 固定开销(59us)的大头。
 # 惰性构建的意义: 不做回测的实盘进程不必为这张表付出导入期成本。
 _TRADE_DATE_POSITION = None
