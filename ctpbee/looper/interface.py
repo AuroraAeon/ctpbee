@@ -31,10 +31,10 @@ def trade_day_of(timing: datetime) -> date:
     date_str = str(day)
     if night:
         """if hour > 21, switch to next trade day"""
-        result = date.fromisoformat(trade_dates[trade_date_index(date_str) + 1])
+        result = date(*map(int, trade_dates[trade_date_index(date_str) + 1].split("-")))
     elif not is_trade_date(date_str):
         last_day = timing + timedelta(days=-1)
-        result = date.fromisoformat(trade_dates[trade_date_index(str(last_day.date())) + 1])
+        result = date(*map(int, trade_dates[trade_date_index(str(last_day.date())) + 1].split("-")))
     else:
         result = day
     _TRADE_DAY_MEMO[key] = result
