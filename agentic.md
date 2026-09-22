@@ -87,6 +87,57 @@ DCE branch, cache isolation across ActionDays, `@frozen` allow/deny by caller
 name, TickData 40-field construction + `__post_init__` `local_symbol` +
 `_to_dict`. Import smoke covers all three interfaces (no circular imports).
 
+## Backtest hot path (2026-09-22, this branch)
+
+The 2026-08-21 sweep only covered the **live** market-data path. The looper
+(`PATTERN="looper"`) had two per-bar fixed costs on top of that, and they were
+bigger by two orders of magnitude:
+
+1. **`VessData.last_bar()` in `looper/data.py`** attempted
+   `from data_api import Tick, Kline` **once per replayed bar/tick**. `data_api`
+   is an optional package that was never open-sourced (see the `todo` in
+   `app.add_basic_info`), so in practice the import always fails — and a
+   **failed import is not cached in `sys.modules`**: every attempt walks the
+   whole `PathFinder` chain, joining and `stat`-ing each `sys.path` entry.
+   72,600 bars produced 655k `nt.stat` calls = 145 s of a 171 s run (~85% of
+   backtest wall time). The probe result is now cached on first use
+   (`data_api_types()`, empty tuple when unavailable, so the `isinstance` call
+   site needs no branch).
+2. **Trade-day resolution at the end of `LocalLooper.__call__`** linearly
+   scanned the 8800-entry `trade_dates` list 1-2 times per tick plus a
+   `strptime` — 39-92 µs/bar. Extracted as `trade_day_of()` on top of new O(1)
+   primitives in `date.py` (`is_trade_date` / `trade_date_index` over a lazily
+   built `{date: index}` map) and memoized per `(calendar day, night session)`,
+   so a whole backtest resolves each day at most twice.
+
+Benchmarks (Windows, Python 3.11.16, synthetic minute bars):
+
+| dataset | origin/dev | + probe cache | + trade-day O(1) |
+|---|---|---|---|
+| 72,600 bars, 1 contract | 113-121 s (1.56 ms/bar) | 4.8 s (66 µs/bar) | **1.3 s (18 µs/bar)** — 87× |
+| 165,600 bars, 2 contracts | 262 s | — | **3.7 s** — 71× |
+| trade-day block, isolated | 38.5 µs (day) / 50.3 µs (night) | — | 0.12 µs (329×/447×) |
+| `data_api` probe, isolated | 1.23 ms/bar | 0.036 µs (cached) | ≤1 probe per process |
+
+### Verified equivalence
+
+`tests/test_backtest_hotpath.py` (32 checks) inlines **both** pre-optimization
+implementations as oracles and verifies on three levels: exhaustive unit
+equivalence (all 8800 calendar dates × 5 session buckets, and every natural day
+2025-01-01…2027-01-04 × 5 buckets, comparing return values **and** exception
+type+message — 925 exception cases included), observability of the caches (a
+`meta_path` counter shows 1 path search per 5000 replayed bars vs 1 per bar
+before), and an **end-to-end differential backtest**: the same two-contract,
+multi-settlement, long+short run executed by the new code and by the restored
+old code, asserting identical `daily_life`, identical trade blotter (uuid order
+ids excluded) and identical final balance.
+
+Known pre-existing edges the suite locks instead of fixing: a night bar on the
+last calendar day (`2026-12-31`) raises `IndexError`, a non-trading day whose
+predecessor is also non-trading raises `ValueError`, and sending an order on the
+**first** bar of a backtest raises `AttributeError` because `LocalLooper.datetime`
+is only assigned after the bar is dispatched.
+
 ## Conventions and known edges (read before touching)
 
 - **`@frozen` rule**: only callers whose function name starts with `_` may
@@ -103,6 +154,14 @@ name, TickData 40-field construction + `__post_init__` `local_symbol` +
   the list before 2027.
 - **Keep the three `md_api.py` copies in sync**; shared helpers
   (`build_tick_datetime`) prevent drift for the parsing path.
+- **No optional-dependency `import` inside per-tick / per-bar loops.** A
+  *failing* import is never cached in `sys.modules`, so it re-walks `sys.path`
+  with a `stat` per entry on every iteration (this cost 85% of backtest wall
+  time until 2026-09-22). Probe once and cache the outcome.
+- **`trade_dates` lookups must go through `date.is_trade_date` /
+  `date.trade_date_index`**, not `x in trade_dates` / `trade_dates.index(x)`:
+  the list has 8800 entries and any per-tick linear scan shows up immediately in
+  profiles.
 
 ## Test infrastructure (hard rule: every change must land with passing tests)
 
@@ -116,7 +175,10 @@ real Redis): `python tests/<name>.py` exits non-zero on failure.
 | `test_dispatcher.py` | 11 | Dispatcher relay hardening (queue isolation, failure containment, LRU, overflow drop) |
 | `test_tool_register.py` | 15 | standalone tool_register primitive (order/dedup/unregister, isolation, key isolation, snapshot) + Tool integration |
 | `test_config_env.py` | 8 | `Config.from_envvars` (override, typed parsing, fallback, strict mode, prefix) |
-| `test_upper_layers.py` | 61 | end-to-end upper-layer simulation with a FakeApp + isolated global signals: constant data objects & frozen protection, Recorder event flow (tick/order/trade/position/account/contract/last, INSTRUMENT_INDEPEND, active-order bookkeeping, init-once), local position deep cases (SHFE vs non-SHFE close priority, frozen spill, order splitting, yesterday conversion), DDDR/UDDR serialization round-trips, Hickey session windows / trade-day derivation, CtpbeeApi `__call__`/`route`/`register`/`subscribe`, Config loaders |
+| `test_backtest_hotpath.py` | 32 | looper hot path vs inlined pre-optimization oracles: O(1) calendar primitives + `trade_day_of` exhaustive over all 8800 calendar dates and all natural days 2025-2026 (values **and** exception type/message), cache observability (memo hits, single `data_api` probe), optional-dependency branch still converting `data_api` entities, end-to-end differential backtest (new vs old code path: identical daily settlements, trade blotter and balance) |
+| `test_upper_layers.py` | 66 | end-to-end upper-layer simulation with a FakeApp + isolated global signals: constant data objects & frozen protection, Recorder event flow (tick/order/trade/position/account/contract/last, INSTRUMENT_INDEPEND, active-order bookkeeping, init-once), local position deep cases (SHFE vs non-SHFE close priority, frozen spill, order splitting, yesterday conversion), DDDR/UDDR serialization round-trips, Hickey session windows / trade-day derivation, CtpbeeApi `__call__`/`route`/`register`/`subscribe`, Config loaders |
+
+161 checks in total across the 8 suites.
 
 Behavioral quirks locked by characterization (see suite comments):
 `PositionData.local_position_id` uses `str(enum)` (`ag2612.SHFE.Direction.LONG`);
@@ -143,3 +205,4 @@ self-consistent — fixed (see changelog 2026-08-21g).
 | 2026-08-21j | Examples medium-severity fixes (high-severity items intentionally left: test credentials in config.json and expired contract codes are user-maintained): ① `spread_arbitrage.calculate_spread` now appends exactly one spread per time-aligned minute (timestamp alignment + same-minute dedup via `_last_pair_dt`) instead of re-zipping the entire two-leg window on every bar (O(window) churn per bar; positional, not temporal, pairing); ② `atr_strategy.on_contract` enriches `instrument_set` with the `local_symbol` form — the `INSTRUMENT_INDEPEND` filter compares `event.data.local_symbol`, so a bare contract name silently dropped every tick; ③ `openctp_client` order gating: at most one action per 20 ticks (was: FOK order on nearly every tick) with local net-position tracking from `on_trade`. Suite `tests/test_examples_strategies.py` (15 checks; 129 total across 7 suites). |
 | 2026-08-21k | User-facing HTML documentation `docs/index.html` (single file, terminal aesthetic, no build step): quickstart, config reference incl. `from_envvars`, architecture/event-flow diagram, strategy callbacks, order-action semantics (documents the `buy_close`=平多头 naming trap), standalone `tool_register`, looper backtest, performance characteristics, user caveats (calendar horizon 2026-12-31, 100 ms timestamp quantization, DCE local-date host assumption, CTP no-price sentinels, INSTRUMENT_INDEPEND local_symbol form), test suites. Entries added to root `README.md` and `examples/readme.md`. HTML tag balance verified; 7 suites still green (129 checks). |
 | 2026-08-21l | Docs expanded per review: ① new "Tools usage" section (write a Tool subclass, with_tools/add_tool/get_tool, subscribe/remove_func via CtpbeeApi or the tool object, kline injection, plus the standalone primitive); ② full config.json demo; ③ examples showcase (login/ATR, run_arb spread, kline, looper backtest, openctp, strategy library); ④ bilingual zh/en with a sidebar toggle persisted in localStorage; ⑤ new "Data structures" section (TickData cumulative-volume semantics, OrderData/TradeData status machine and Δpos = direction × volume, PositionData yd/frozen/pn semantics, requests/enums). Section count 12; tag balance verified; suites still green. |
+| 2026-09-22a | Backtest (looper) hot path: ① `VessData.last_bar` no longer runs `from data_api import Tick, Kline` once per replayed bar — the optional `data_api` package is unpublished, so that import always failed, and failed imports are not cached in `sys.modules` (each attempt re-walks `sys.path` with a `stat` per entry: 655k `nt.stat` / 145 s out of a 171 s, 72,600-bar run). Probe now happens at most once and the result is cached (`data_api_types()`, empty tuple when unavailable); the `data_api → to_bumblebee()` branch itself is preserved verbatim, including non-ImportError propagation and "a raising data_api is not cached as unavailable". ② `LocalLooper.__call__`'s trailing trade-day block (1-2 linear scans of the 8800-entry `trade_dates` + a `strptime` per tick, 39-92 µs) extracted as `trade_day_of()` over new O(1) primitives `date.is_trade_date` / `date.trade_date_index` (lazily built `{date: index}` map, so live-only processes pay nothing at import) and memoized per `(calendar day, night session)`. `get_day_from` uses the same primitive. Net effect on synthetic minute bars: 113-121 s → **1.3 s** (87×, 1.56 ms → 18 µs per bar) for 72,600 bars, 262 s → **3.7 s** (71×) for a 165,600-bar two-contract run. Behavior-preserving: both pre-optimization implementations are inlined as oracles in `tests/test_backtest_hotpath.py` (32 checks: exhaustive value+exception equivalence, cache observability, end-to-end differential backtest); the 2026-08-21d/2026-08-21j first-bar `LocalLooper.datetime` `AttributeError`, the calendar-horizon `IndexError` and the holiday `ValueError` are locked as characterization, not changed. Suites: 161 checks across 8, all green. |
