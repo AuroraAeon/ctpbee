@@ -119,6 +119,7 @@ end-to-end rows by timing `CtpBee.start()` over a synthetic replay):
 | dataset | origin/dev | + probe cache | + trade-day O(1) |
 |---|---|---|---|
 | 72,600 bars, 1 contract | 90.7-93.0 s (1.25-1.28 ms/bar) | 4.27 s (59 µs/bar) — 21× | **1.13 s (15.6 µs/bar) — 80×** |
+| same, no-op strategy instead of a counting one | 80.8-81.9 s (1.12 ms/bar) | — | **1.11-1.14 s (15.5 µs/bar) — 72×** |
 | 139,800 bars, 2 contracts | 177 s | — | **3 s** — 59× |
 | trade-day block, isolated | 37.6 µs (day) / 48.7 µs (night) | — | 0.11 µs (358×/451×) |
 | `data_api` probe, isolated | ~1.1 ms/bar | 0.037 µs (cached) | ≤1 probe per process |

@@ -622,7 +622,7 @@ result = app.get_result(report=<span class="r">True</span>, auto_open=<span clas
         <div class="stat"><div class="to">3.1 µs</div><div class="lbl"><span class="zh">TickData 对象构造(批量初始化)</span><span class="en">TickData construction (bulk init)</span></div></div>
         <div class="stat"><div class="to">0.1 µs</div><div class="lbl"><span class="zh">同价 tick 持仓盈亏(纯函数跳过)</span><span class="en">pnl on unchanged price (pure-function skip)</span></div></div>
         <div class="stat"><div class="to">~3.4 µs</div><div class="lbl"><span class="zh">每 tick Python 固定成本合计</span><span class="en">total per-tick Python overhead</span></div></div>
-        <div class="stat"><div class="to">16 µs</div><div class="lbl"><span class="zh">回测每根 bar 框架成本(原 ~1.28 ms，80×)</span><span class="en">per-bar backtest framework cost (was ~1.28 ms, 80×)</span></div></div>
+        <div class="stat"><div class="to">15 µs</div><div class="lbl"><span class="zh">回测每根 bar 框架成本(原 ~1.12 ms，72×)</span><span class="en">per-bar backtest framework cost (was ~1.12 ms, 72×)</span></div></div>
     </div>
     <p style="font-family:var(--mono); font-size:12px; color:var(--text-faint)"><span class="zh">参考量级 · Windows / Python 3.11-3.13</span><span class="en">Indicative figures · Windows / Python 3.11-3.13</span></p>
 
