@@ -13,8 +13,9 @@ from typing import Iterable, Tuple, Sized, Generator
 #
 # 为什么要缓存探测结果: 【失败】的 import 不会写入 sys.modules, 每次尝试都要把
 # PathFinder 的 sys.path 逐条拼接 + stat 走满一遍。last_bar 是每根 bar/tick 都
-# 执行一次的回测主循环, 旧实现把这个 import 放在循环体里, 实测 72600 根 bar 触发
-# 65 万次 nt.stat, 占回测总耗时的 ~85%。此处改为至多探测一次。
+# 执行一次的回测主循环, 旧实现把这个 import 放在循环体里: cProfile 在 origin/dev
+# 上量到每根 bar 9.1 次 nt.stat(19800 根 bar 共 179823 次), 一次 import 探测
+# ~1.1ms, 即回测总耗时的 ~8 成。此处改为至多探测一次。
 #
 # 取值: None 尚未探测 / () data_api 不可用 / (Tick, Kline) 可用类型。
 # 空元组让 isinstance 恒为 False, 调用点因此不需要分支。

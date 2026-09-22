@@ -18,7 +18,7 @@ def trade_day_of(timing: datetime) -> date:
 
     与 ``LocalLooper.__call__`` 里的旧实现逐值等价(包括 ValueError / IndexError
     的触发条件), 只改性能: 旧实现在【每一个】tick 上对 8800 元素的 trade_dates
-    做 1~2 次线性扫描再加一次 strptime, 实测 39~92us/条。交易日只由
+    做 1~2 次线性扫描再加一次 strptime, 实测日盘 38us、夜盘 49us 每条。交易日只由
     (自然日, hour >= 21) 两个输入决定, 且日历在进程内不变, 因此 O(1) 定位 +
     记忆化后, 整条回测曲线只需解析 "覆盖天数 x 2" 次。
     """
